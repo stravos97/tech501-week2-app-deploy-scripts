@@ -35,6 +35,7 @@ This documentation covers everything from setting up your environment, managing 
   - [Setting Up a Reverse Proxy with NGINX](#setting-up-a-reverse-proxy-with-nginx)
   - [Managing the Application with PM2](#managing-the-application-with-pm2)
   - [Creating and Using VM Images](#creating-and-using-vm-images)
+  -  [Creating a Virtual Machine Scale Set](#creating-a-virtual-machine-scale-set)
   - [Automating Deployment with User Data Scripts](#automating-deployment-with-user-data-scripts)
     - [Purpose](#purpose)
     - [Creating the `run-app-only.sh` Script](#creating-therun-app-onlyshscript)
@@ -658,6 +659,333 @@ Creating VM images allows you to replicate your configured VMs quickly, ensuring
     - **Scalability:** Easily scale out by deploying multiple VMs from the same image.
 
 ---
+## Creating a Virtual Machine Scale Set
+
+**Virtual Machine Scale Sets (VMSS)** allow you to deploy and manage a set of identical VMs, ensuring high availability and scalability for your applications. VMSS automatically increases or decreases the number of VM instances based on demand or predefined schedules.
+
+### Why Use a Virtual Machine Scale Set?
+
+- **Scalability:** Automatically scale the number of VMs based on application load.
+- **High Availability:** Distribute VMs across multiple availability zones to ensure reliability.
+- **Cost-Efficiency:** Pay only for the resources you use by scaling in and out as needed.
+- **Simplified Management:** Manage a group of VMs as a single entity.
+
+### Parameters File Overview
+
+The parameters file provides specific values for the template's configurable inputs, ensuring the deployment aligns with the desired environment and requirements:
+
+- **Location:** Deploys resources to the `uksouth` Azure region.
+- **OS Disk Type:** Uses `StandardSSD_LRS` for OS disks, balancing performance and cost.
+- **Networking:**
+    - **Virtual Network ID and Name:** References an existing VNet named `tech501-haashim-2-subnet-vnet`.
+    - **Subnet:** Utilizes the `public-subnet` within the specified VNet.
+    - **Network Security Group (NSG):** Applies security rules from `tech501-haashim-sparta-app-allow-http-ssh-3000` to control inbound traffic (e.g., HTTP and SSH).
+- **Load Balancer:**
+    - **Name:** `tech501-haashim-sparta-app-lb`
+    - **Backend Pool Name:** `bepool`
+    - **Ports:** Frontend and backend ports set to `80` for HTTP traffic.
+    - **Protocol:** Uses `Tcp` for load balancing rules.
+    - **NAT Rule Ports:** Starts at `50000` to facilitate SSH access to VMs.
+- **VM Scale Set:**
+    - **Name:** `tech501-haashim-sparta-app-vmss`
+    - **Instance Count:** Starts with `2` instances.
+    - **Instance Size:** Utilizes `Standard_B1s` VMs for cost-effective performance.
+    - **Zones:** Distributes VMs across zones `1`, `2`, and `3`.
+    - **Scaling Policies:** Sets up rules to scale based on CPU usage, with a minimum of `2` and a maximum of `3`instances.
+    - **Upgrade Policy:** Set to `Manual` for controlled updates.
+- **Admin Credentials:**
+    - **Username:** `adminuser`
+    - **SSH Key:** Select **`tech-501-haashim-az-key`** from the Azure store.
+- **Health Extension:**
+    - **Protocol:** `http`
+    - **Port:** `80`
+    - **Request Path:** `/` for health checks.
+- **Auto Repairs Policy:**
+    - **Enabled:** `true`
+    - **Grace Period:** `PT10M` (10 minutes) before initiating repairs.
+    - **Action:** Replace faulty instances.
+- **User Data:**
+    - **Value:** Encoded script (`IyEvYmluL2Jhc2gKCmNkIC9yZXBvL2FwcAoKcG0yIHN0YXJ0IGFwcC5qcw==`) which decodes to:
+        
+        
+        `#!/bin/bash  cd /repo/app  pm2 start app.js`
+        
+    - **Purpose:** Navigates to the application directory and starts the application using PM2, a Node.js process manager.
+
+### Step-by-Step Guide to Creating the VM Scale Set
+
+#### Prerequisites
+
+- **Existing Virtual Network (VNet):** Ensure you have a VNet named `tech501-haashim-2-subnet-vnet` with a subnet named `public-subnet`.
+- **Network Security Group (NSG):** Ensure the NSG `tech501-haashim-sparta-app-allow-http-ssh-3000` exists with appropriate inbound rules.
+- **Load Balancer:** A new load balancer will be created as part of this setup.
+- **User Data Script:** Ensure the `sparta-app-first-deploy.sh` script is prepared and encoded if necessary.
+
+#### 1. Orchestration
+
+A scale set has a **"scale set model"** that defines the attributes of virtual machine instances, such as size, number of data disks, and more. As the number of instances in the scale set changes, new instances are added or removed based on this model.
+
+**Recommendation:** Choose **Uniform** orchestration mode for most applications to take advantage of simplified scaling and management.
+
+#### 2. Create a New Load Balancer
+
+Instead of selecting an existing load balancer, we'll create a new one specifically for the VM Scale Set.
+
+1. **Navigate to Azure Portal:**
+    
+    - Open [Azure Portal](https://portal.azure.com/) and sign in.
+2. **Create a New Load Balancer:**
+    
+    - Click on **"Create a resource"** in the upper left corner.
+    - Search for **"Load Balancer"** and select it.
+    - Click **"Create"**.
+3. **Load Balancer Configuration:**
+    
+    - **Name:** `tech501-haashim-sparta-app-lb`
+    - **SKU:** Standard
+    - **Type:** Public
+    - **Frontend IP Configuration:**
+        - **Name:** `PublicIPAddress`
+        - **IP Version:** IPv4
+        - **Public IP Address:** Create a new public IP or select an existing one.
+4. **Backend Pool Configuration:**
+    
+    - **Name:** `bepool`
+    - **Add VMs:** Leave empty for now; it will be associated with the VM Scale Set later.
+5. **Configure Health Probes:**
+    
+    - **Name:** `healthprobe`
+    - **Protocol:** HTTP
+    - **Port:** `80`
+    - **Path:** `/`
+    - **Interval:** 15 seconds
+    - **Unhealthy Threshold:** 2
+6. **Configure Load Balancing Rules:**
+    
+    - **Name:** `httpRule`
+    - **Frontend IP Address:** Select `PublicIPAddress`.
+    - **Backend Pool:** Select `bepool`.
+    - **Protocol:** TCP
+    - **Frontend Port:** `80`
+    - **Backend Port:** `80`
+    - **Health Probe:** Select `healthprobe`.
+    - **Idle Timeout (minutes):** 5
+    - **Enable Floating IP:** Disabled
+7. **Configure NAT Rules for SSH Access:**
+    
+    - **Name:** `SSH_NAT`
+    - **Frontend IP Address:** Select `PublicIPAddress`.
+    - **Protocol:** TCP
+    - **Frontend Port Range:** `50000-50099`
+    - **Backend Port:** `22`
+    - **Enable TCP Reset:** Enabled
+8. **Review and Create:**
+    
+    - Review all settings.
+    - Click **"Create"** to deploy the load balancer.
+
+**Explanation:**
+
+- **Load Balancer:** Distributes incoming HTTP traffic across VM instances.
+- **Health Probes:** Monitor the health of VMs to ensure traffic is only sent to healthy instances.
+- **NAT Rules:** Facilitate SSH access to individual VMs within the scale set without exposing them directly to the internet.
+
+#### 3. Configure Network Interface Settings for the NIC
+
+1. **Edit Network Interface (NIC) Settings:**
+    
+    - Navigate to the **Network Interfaces** section in the Azure Portal.
+    - Select the NIC associated with the VM Scale Set or proceed to configure it during the VM Scale Set creation.
+2. **Subnet Configuration:**
+    
+    - **Subnet:** Change to `public-subnet` with the address range `10.0.2.0/24`.
+    - **Explanation:** Ensures that the VM instances are placed within the correct subnet, allowing them to communicate with each other and access necessary resources.
+3. **Associate Network Security Group (NSG):**
+    
+    - **Name:** `tech501-haashim-sparta-app-allow-http-ssh-3000`
+        
+    - **Steps:**
+        
+        - In the NIC settings, go to **"Network security group"**.
+        - Select **"Advanced"**.
+        - Choose the existing NSG `tech501-haashim-sparta-app-allow-http-ssh-3000` from the dropdown.
+    - **Explanation:** Applies security rules to control inbound traffic, ensuring only HTTP and SSH traffic is allowed.
+        
+
+#### 4. Instance Details
+
+1. **License Type:**
+    - **Selection:** Choose **"Other"**.
+    - **Explanation:** Selecting the appropriate license type ensures compliance and correct billing. "Other" is used when the VM does not require a specific license or when using custom licensing.
+
+#### 5. Scaling Policy
+
+1. **Choose Scaling Policy:**
+    
+    - **Option:** **Auto**
+    - **Explanation:** Allows Azure to automatically adjust the number of VM instances based on predefined rules and metrics, ensuring optimal performance and cost-efficiency.
+2. **Configure Scaling Rules:**
+    
+    - **Minimum Instances:** `2`
+        
+    - **Maximum Instances:** `3`
+        
+    - **Scale-Out Rule:**
+        
+        - **Condition:** CPU usage exceeds `75%`
+        - **Action:** Scale out to `3` instances.
+    - **Scale-In Rule:**
+        
+        - **Condition:** CPU usage drops below `20%`
+        - **Action:** Scale in to `2` instances.
+    - **Example:**
+        
+        
+        `scalingRules:   scaleOut:     threshold: 75     direction: increase     adjustment: +1     cooldown: 300   scaleIn:     threshold: 20     direction: decrease     adjustment: -1     cooldown: 300`
+        
+    - **Explanation:** These rules ensure that your application can handle increased load by adding more instances when CPU usage is high and reducing instances when the load decreases, optimizing both performance and costs.
+        
+
+#### 6. Health
+
+1. **Enable Application Health Monitoring:**
+    
+    - **Setting:** Selected
+    - **Explanation:** Monitors the health of your application to ensure it is running smoothly. If the application becomes unhealthy, Azure can take corrective actions automatically.
+2. **Configure Recovery Settings:**
+    
+    - **Enable Automatic Repairs:** `true`
+        
+    - **Grace Period:** `PT10M` (10 minutes)
+        
+    - **Action:** Replace faulty instances.
+        
+    - **Explanation:** If a VM instance becomes unhealthy, Azure waits for 10 minutes before attempting to repair or replace it, ensuring minimal disruption to your application.
+        
+
+#### 7. Reimaging VM Scale Set Instances
+
+1. **Reimaging the Instances:**
+    - **Instances to Reimage:**
+        
+        - `tech501-haashim-sparta-app-vmss2_0`
+        - `tech501-haashim-sparta-app-vmss2_1`
+    - **Reason for Reimaging:**
+        
+        - The user script `pm2 start app.js` only runs once when instances are first created. If instances are stopped and started again, the script does not execute automatically because `npm run` isn't being run in the correct directory. Reimaging ensures that the instances are in a healthy state with the necessary startup scripts executed properly.
+        - **Alternative Fix:** Enable the **Autohealing** option to automatically detect and remediate unhealthy instances without manual intervention.
+    - **Steps to Reimage:**
+        
+        1. Navigate to the **VM Scale Set** `tech501-haashim-sparta-app-vmss2` in the Azure Portal.
+        2. Select **Instances**.
+        3. Choose the instance `tech501-haashim-sparta-app-vmss2_0` and click **Reimage**.
+        4. Repeat the process for the instance `tech501-haashim-sparta-app-vmss2_1`.
+        5. Confirm the reimaging process when prompted.
+    - **Explanation:** Reimaging refreshes the VM instances, ensuring that the startup scripts are executed correctly, and the instances return to a healthy state.
+        
+
+#### 8. SSHing into the Load Balancer
+
+1. **SSH Access via Load Balancer:**
+    - **Why SSH Through Load Balancer:**
+        - Direct SSH access to individual VM instances in a scale set is not recommended due to security concerns and the dynamic nature of scale sets. Instead, SSHing through the load balancer using NAT rules ensures secure and managed access.
+    - **Steps to SSH into VM Instances via Load Balancer:**
+        1. Obtain the **Public IP Address** of the load balancer `tech501-haashim-sparta-app-lb` from the Azure Portal.
+        2. Determine the **NAT Port** assigned to the specific VM instance. For example, instance `tech501-haashim-sparta-app-vmss2_0` might use port `50000`, and `tech501-haashim-sparta-app-vmss2_1`might use port `50001`.
+        3. Use the following SSH command, replacing `<Load_Balancer_Public_IP>`, `<NAT_Port>`, and `<Username>` accordingly:
+            
+            
+            `ssh adminuser@<Load_Balancer_Public_IP> -p <NAT_Port>`
+            
+            - **Example:**
+                
+                
+                `ssh adminuser@52.174.34.12 -p 50000`
+                
+    - **Explanation:** SSHing through the load balancer using NAT ports provides controlled and secure access to individual VM instances without exposing them directly to the internet.
+
+#### 9. Deallocating and Reimaging Unhealthy Instances
+
+1. **Identify Unhealthy Instances:**
+    
+    - Navigate to the **VM Scale Set** `tech501-haashim-sparta-app-vmss2` in the Azure Portal.
+    - Check the **Instance Health** status to identify any unhealthy VMs.
+2. **Deallocate and Reimage Unhealthy Instances:**
+    
+    - **Steps:**
+        1. Select the unhealthy instance (e.g., `tech501-haashim-sparta-app-vmss2_0`).
+        2. Click on **"Stop"** to deallocate the VM.
+        3. Once deallocated, click on **"Reimage"** to refresh the VM instance.
+        4. Confirm the reimaging process when prompted.
+    - **Explanation:** Deallocating and reimaging resets the VM instance, ensuring that it returns to a healthy state with all startup scripts executed correctly.
+
+#### 10. How to Delete the VM Scale Set
+
+1. **Navigate to the VM Scale Set:**
+    
+    - Open the Azure Portal and go to the **Resource Group** containing the VM Scale Set.
+    - Select the **Virtual Machine Scale Set** `tech501-haashim-sparta-app-vmss`.
+2. **Delete the VM Scale Set:**
+    
+    - Click on **"Delete"** at the top of the VM Scale Set overview page.
+        
+    - Confirm the deletion by typing the VM Scale Set name when prompted.
+        
+    - **Explanation:** Deleting the VM Scale Set removes all associated VM instances and resources, ensuring that no unnecessary resources continue to incur costs.
+        
+
+#### 11. How to Delete the Load Balancer
+
+1. **Navigate to the Load Balancer:**
+    
+    - Open the Azure Portal and go to the **Resource Group** containing the load balancer.
+    - Select the **Load Balancer** `tech501-haashim-sparta-app-lb`.
+2. **Delete the Load Balancer:**
+    
+    - Click on **"Delete"** at the top of the Load Balancer overview page.
+        
+    - Confirm the deletion by typing the Load Balancer name when prompted.
+        
+    - **Explanation:** Deleting the load balancer ensures that all associated frontend IP configurations, backend pools, health probes, load balancing rules, and NAT rules are removed, preventing any unintended traffic routing or costs.
+        
+
+### Verifying the VM Scale Set Deployment
+
+1. **Monitor Deployment:**
+    
+    - Navigate to the **Resource Group** in the Azure Portal.
+    - Locate the **VM Scale Set** `tech501-haashim-sparta-app-vmss`.
+    - Check the **Instances** to ensure that two VM instances are running.
+2. **Test Load Balancer:**
+    
+    - Obtain the **Public IP Address** of the load balancer `tech501-haashim-sparta-app-lb`.
+    - Open a web browser and navigate to `http://<Load_Balancer_Public_IP>/`.
+    - The application should load, and traffic should be distributed across the VM instances in the scale set.
+3. **Verify Scaling Policies:**
+    
+    - **Simulate Load:**
+        - Use tools like Apache JMeter or Azure Load Testing to generate CPU load on the VMs.
+    - **Monitor Scaling:**
+        - Observe the **Instance Count** in the VM Scale Set to ensure it scales out to three instances when CPU usage exceeds `75%`.
+        - Reduce the load and verify that it scales back in to two instances when CPU usage drops below `20%`.
+4. **Health Checks:**
+    
+    - Ensure that the health extension is correctly monitoring the application.
+    - Verify that any unhealthy VM instances are automatically repaired or replaced according to the auto repairs policy.
+
+### Summary of Key Configurations
+
+- **Orchestration Mode:** Uniform for simplified management and scaling.
+- **Scaling Policy:** Auto with rules to scale out to `3` instances at `75%` CPU and scale in to `2` instances at `20%` CPU.
+- **Load Balancer:** Newly created `tech501-haashim-sparta-app-lb` with backend pool `bepool` and NAT rules for SSH access.
+- **Networking:** VMs placed in `public-subnet` with NSG `tech501-haashim-sparta-app-allow-http-ssh-3000`.
+- **Health Monitoring:** Enabled application health checks and automatic repairs to maintain VM integrity.
+- **User Data Script:** Automates application startup using PM2 upon VM provisioning.
+- **SSH Key:** Selected **`tech-501-haashim-az-key`** from the Azure store for secure access.
+
+**Note:** Always ensure that sensitive information, such as admin passwords or SSH keys, is securely managed and not exposed in scripts or configuration files.
+
+---
 
 ## Automating Deployment with User Data Scripts
 
@@ -667,7 +995,7 @@ Automation scripts streamline the deployment process, reducing manual interventi
 
 User Data scripts execute commands automatically during the VM provisioning process. They can set environment variables, start services, and perform other setup tasks without manual SSH access.
 
-### Creating the `run-app-only.sh` Script
+### Creating the `sparta-app-first-deploy.sh` Script
 
 1. **Script Content:**
     
@@ -684,7 +1012,7 @@ User Data scripts execute commands automatically during the VM provisioning proc
     - **Steps:**
         - When creating a new VM from an image, navigate to the **Advanced** tab.
         - Enable the **User Data** option.
-        - Paste the contents of `run-app-only.sh` into the **User Data** field.
+        - Paste the contents of `sparta-app-first-deploy.sh` into the **User Data** field.
     - **Explanation:** The script runs automatically when the VM is provisioned, setting up the necessary environment and starting the application without manual intervention.
 
 ### Benefits of Automation Scripts
@@ -736,3 +1064,4 @@ Properly deleting VMs ensures that no unnecessary resources are left running, wh
 ## Conclusion
 
 Deploying applications and databases on Azure Virtual Machines involves several steps, from setting up your development environment to configuring network security and automating deployments. This guide has walked you through each stage, providing detailed explanations and best practices to ensure a successful and secure deployment.
+
