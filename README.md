@@ -8,32 +8,41 @@ This documentation covers everything from setting up your environment, managing 
 
 ## Table of Contents
 
-1. [Prerequisites](#prerequisites)
-2. [Understanding Key Concepts](#understanding-key-concepts)
-    - [Azure Virtual Machines](#azure-virtual-machines)
-    - [Git and GitHub](#git-and-github)
+- [Comprehensive Guide to Deploying Applications and Databases on Azure Virtual Machines](#comprehensive-guide-to-deploying-applications-and-databases-on-azure-virtual-machines)
+  - [Introduction](#introduction)
+  - [Table of Contents](#table-of-contents)
+  - [Prerequisites](#prerequisites)
+  - [Understanding Key Concepts](#understanding-key-concepts)
+    - [Azure Virtual Machines](#azure-virtual-machines)
+    - [Git and GitHub](#git-and-github)
     - [NGINX](#nginx)
     - [MongoDB](#mongodb)
     - [PM2](#pm2)
-3. [Initial Setup](#initial-setup)
-    - [Creating and Syncing a Git Repository](#creating-and-syncing-a-git-repository)
-4. [Deploying the Application](#deploying-the-application)
-    - [Creating the First VM for the Application](#creating-the-first-vm-for-the-application)
-    - [Installing Necessary Software on the VM](#installing-necessary-software-on-the-vm)
-    - [Deploying the App Using SCP or Git Clone](#deploying-the-app-using-scp-or-git-clone)
-5. [Configuring the Second VM](#configuring-the-second-vm)
-    - [Creating the Second VM](#creating-the-second-vm)
-    - [Setting Up Network Security Groups (NSGs)](#setting-up-network-security-groups-nsgs)
-6. [Setting Up the Database VM](#setting-up-the-database-vm)
-    - [Creating the Database VM](#creating-the-database-vm)
-    - [Installing and Configuring MongoDB](#installing-and-configuring-mongodb)
-7. [Connecting the Application VM to the Database VM](#connecting-the-application-vm-to-the-database-vm)
-8. [Setting Up a Reverse Proxy with NGINX](#setting-up-a-reverse-proxy-with-nginx)
-9. [Managing the Application with PM2](#managing-the-application-with-pm2)
-10. [Creating and Using VM Images](#creating-and-using-vm-images)
-11. [Automating Deployment with User Data Scripts](#automating-deployment-with-user-data-scripts)
-12. [Best Practices for Deleting VMs](#best-practices-for-deleting-vms)
-13. [Conclusion](#conclusion)
+  - [Initial Setup](#initial-setup)
+    - [Creating and Syncing a Git Repository](#creating-and-syncing-a-git-repository)
+  - [Deploying the Application](#deploying-the-application)
+    - [Creating the First VM for the Application](#creating-the-first-vm-for-the-application)
+    - [Installing Necessary Software on the VM](#installing-necessary-software-on-the-vm)
+  - [Configuring the Second VM](#configuring-the-second-vm)
+    - [Creating the Second VM](#creating-the-second-vm)
+    - [Setting Up Network Security Groups (NSGs)](#setting-up-network-security-groups-nsgs)
+  - [Deploying the App Using SCP or Git Clone](#deploying-the-app-using-scp-or-git-clone)
+    - [Git Clone Method](#git-clone-method)
+  - [Setting Up the Database VM](#setting-up-the-database-vm)
+    - [Creating the Database VM](#creating-the-database-vm)
+    - [Installing and Configuring MongoDB](#installing-and-configuring-mongodb)
+  - [Connecting the Application VM to the Database VM](#connecting-the-application-vm-to-the-database-vm)
+  - [Setting Up a Reverse Proxy with NGINX](#setting-up-a-reverse-proxy-with-nginx)
+  - [Managing the Application with PM2](#managing-the-application-with-pm2)
+  - [Creating and Using VM Images](#creating-and-using-vm-images)
+  - [Automating Deployment with User Data Scripts](#automating-deployment-with-user-data-scripts)
+    - [Purpose](#purpose)
+    - [Creating the `run-app-only.sh` Script](#creating-therun-app-onlyshscript)
+    - [Benefits of Automation Scripts](#benefits-of-automation-scripts)
+  - [Best Practices for Deleting VMs](#best-practices-for-deleting-vms)
+    - [Deletion Steps](#deletion-steps)
+    - [Additional Tips](#additional-tips)
+  - [Conclusion](#conclusion)
 
 ---
 
@@ -210,7 +219,8 @@ After creating the VM, you'll need to install essential software like NGINX, Nod
     - Run the following commands to ensure your system is up-to-date:
         
         
-        `sudo apt-get update -y sudo apt-get upgrade -y`
+        `sudo apt-get update -y` 
+        `sudo apt-get upgrade -y`
         
         - **Explanation:**
             - `sudo`: Executes the command with superuser privileges.
@@ -222,7 +232,8 @@ After creating the VM, you'll need to install essential software like NGINX, Nod
     - NGINX will serve as a web server and reverse proxy.
         
         
-        `sudo apt-get install nginx -y sudo systemctl status nginx`
+        `sudo apt-get install nginx -y` 
+        `sudo systemctl status nginx`
         
         - **Explanation:**
             - `apt-get install nginx`: Installs the NGINX web server.
@@ -397,7 +408,8 @@ A dedicated Database VM ensures that your application has a reliable and scalabl
 2. **Update and Upgrade System Packages:**
     
     
-    `sudo apt-get update -y sudo apt-get upgrade -y`
+    `sudo apt-get update -y` 
+    `sudo apt-get upgrade -y`
     
 3. **Install MongoDB:**
     
@@ -424,7 +436,9 @@ A dedicated Database VM ensures that your application has a reliable and scalabl
 5. **Enable and Restart MongoDB:**
     
     
-    `sudo systemctl enable mongod sudo systemctl restart mongod sudo systemctl status mongod`
+    `sudo systemctl enable mongod` 
+    `sudo systemctl restart mongod` 
+    `sudo systemctl status mongod`
     
     - **Explanation:**
         - `enable mongod`: Ensures MongoDB starts on system boot.
