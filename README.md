@@ -981,7 +981,7 @@ Instead of selecting an existing load balancer, we'll create a new one specifica
 3. **Verify Scaling Policies:**
     
     - **Simulate Load:**
-        - Use tools like Apache JMeter or Azure Load Testing to generate CPU load on the VMs.
+        - Use tools like Apache Bench to generate CPU load on the VMs.
     - **Monitor Scaling:**
         - Observe the **Instance Count** in the VM Scale Set to ensure it scales out to three instances when CPU usage exceeds `75%`.
         - Reduce the load and verify that it scales back in to two instances when CPU usage drops below `20%`.
@@ -999,8 +999,6 @@ Instead of selecting an existing load balancer, we'll create a new one specifica
 - **Health Monitoring:** Enabled application health checks and automatic repairs to maintain VM integrity.
 - **User Data Script:** Automates application startup using PM2 upon VM provisioning.
 - **SSH Key:** Selected **`tech-501-haashim-az-key`** from the Azure store for secure access.
-
-**Note:** Always ensure that sensitive information, such as admin passwords or SSH keys, is securely managed and not exposed in scripts or configuration files.
 
 ---
 
